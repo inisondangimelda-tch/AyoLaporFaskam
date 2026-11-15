@@ -2,7 +2,6 @@ name: Build Flutter APK
 
 on:
   push:
-
     branches: [ "main", "master" ]
 
 jobs:
@@ -18,7 +17,7 @@ jobs:
           cache: true
 
       - name: Generate Android Files
-        run: flutter create . --platforms=android
+        run: flutter create . --platforms=android --project-name ayo_lapor_faskam
 
       - name: Install Dependencies
         run: flutter pub get
