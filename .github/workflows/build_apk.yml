@@ -2,6 +2,7 @@ name: Build Flutter APK
 
 on:
   push:
+
     branches: [ "main", "master" ]
 
 jobs:
@@ -15,6 +16,9 @@ jobs:
         with:
           flutter-version: '3.19.0'
           cache: true
+
+      - name: Generate Android Files
+        run: flutter create . --platforms=android
 
       - name: Install Dependencies
         run: flutter pub get
