@@ -1,169 +1,136 @@
-import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
+import 'dart:convert';
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Inisialisasi Firebase AyoLaporFaskam
   await Firebase.initializeApp(
-    options: const FirebaseOptions(
-      apiKey: "AIzaSyCGqtkVSHK_XJe6iJHBVElEeear1hFik",
-      appId: "1:219794824444:web:1abcaf35388cc687e7a7e9",
-      messagingSenderId: "219794824444",
-      projectId: "ayolaporfaskam",
-      authDomain: "ayolaporfaskam.firebaseapp.com",
-      storageBucket: "ayolaporfaskam.appspot.com",
-    ),
+    options: DefaultFirebaseOptions.currentPlatform,
   );
-  
   runApp(const AyoLaporApp());
 }
 
 class AyoLaporApp extends StatelessWidget {
-  const AyoLaporApp({Key? key}) : super(key: key);
-
+  const AyoLaporApp({super.key});
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Ayo Lapor Faskam',
-      theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
-      home: const DaftarLaporanScreen(),
+      title: 'AyoLaporFaskam',
       debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        primarySwatch: Colors.teal,
+        useMaterial3: true,
+      ),
+      home: const LaporanPage(),
     );
   }
 }
 
-class DaftarLaporanScreen extends StatelessWidget {
-  const DaftarLaporanScreen({Key? key}) : super(key: key);
-
+class LaporanPage extends StatefulWidget {
+  const LaporanPage({super.key});
   @override
-  Widget build(BuildContext context) {
-    final CollectionReference laporanRef =
-        FirebaseFirestore.instance.collection('laporan');
+  State<LaporanPage> createState() => _LaporanPageState();
+}
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Ayo Lapor Faskam - Kampus'),
-        backgroundColor: Colors.blueAccent,
-        foregroundColor: Colors.white,
-      ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: laporanRef.orderBy('tanggal', descending: true).snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(child: Text('Terjadi kesalahan: ${snapshot.error}'));
-          }
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+class _LaporanPageState extends State<LaporanPage> {
+  final _judulController = TextEditingController();
+  final _deskripsiController = TextEditingController();
+  final _lokasiController = TextEditingController();
+  final _pelaporController = TextEditingController();
+  String _kategori = 'Fasilitas Lain';
+  File? _foto;
+  final ImagePicker _picker = ImagePicker();
+  bool _loading = false;
 
-          final data = snapshot.data!.docs;
+  final List<String> _kategoriList = [
+    'Fasilitas Lain',
+    'AC',
+    'Listrik',
+    'Toilet',
+    'Meja Kursi',
+    'Proyektor',
+    'Kebersihan',
+  ];
 
-          if (data.isEmpty) {
-            return const Center(
-              child: Text(
-                'Belum ada laporan kerusakan.\nYuk bikin laporan baru!',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey, fontSize: 16),
-              ),
-            );
-          }
-
-          return ListView.builder(
-            itemCount: data.length,
-            itemBuilder: (context, index) {
-              var item = data[index];
-              return Card(
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                elevation: 3,
-                child: ListTile(
-                  title: Text(
-                    item['judul'] ?? 'Tanpa Judul',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 4),
-                      Text('Lokasi: ${item['lokasi']}'),
-                      Text('Kategori: ${item['kategori']}'),
-                      Text('Pelapor: ${item['pelapor']}'),
-                      const SizedBox(height: 4),
-                      Chip(
-                        label: Text(
-                          item['status'] ?? 'Menunggu',
-                          style: const TextStyle(color: Colors.white, fontSize: 12),
-                        ),
-                        backgroundColor: item['status'] == 'Selesai'
-                            ? Colors.green
-                            : item['status'] == 'Diproses'
-                                ? Colors.orange
-                                : Colors.red,
-                        padding: EdgeInsets.zero,
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const FormLaporanScreen()),
-          );
-        },
-        label: const Text('Buat Laporan'),
-        icon: const Icon(Icons.add),
-        backgroundColor: Colors.blueAccent,
+  Future<void> _pilihFoto() async {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Ambil dari Kamera'),
+              onTap: () async {
+                Navigator.pop(context);
+                final XFile? foto =
+                    await _picker.pickImage(source: ImageSource.camera, imageQuality: 60);
+                if (foto != null) {
+                  setState(() => _foto = File(foto.path));
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Pilih dari Galeri'),
+              onTap: () async {
+                Navigator.pop(context);
+                final XFile? foto =
+                    await _picker.pickImage(source: ImageSource.gallery, imageQuality: 60);
+                if (foto != null) {
+                  setState(() => _foto = File(foto.path));
+                }
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
-}
 
-class FormLaporanScreen extends StatefulWidget {
-  const FormLaporanScreen({Key? key}) : super(key: key);
-
-  @override
-  _FormLaporanScreenState createState() => _FormLaporanScreenState();
-}
-
-class _FormLaporanScreenState extends State<FormLaporanScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final TextEditingController _judulController = TextEditingController();
-  final TextEditingController _lokasiController = TextEditingController();
-  final TextEditingController _deskripsiController = TextEditingController();
-  final TextEditingController _pelaporController = TextEditingController();
-  String _kategoriPilihan = 'Kelistrikan';
-
-  final List<String> _kategoriList = ['Kelistrikan', 'Meubelair', 'Plumbing', 'Fasilitas Lain'];
-
-  void _kirimLaporan() async {
-    if (_formKey.currentState!.validate()) {
-      try {
-        await FirebaseFirestore.instance.collection('laporan').add({
-          'judul': _judulController.text,
-          'lokasi': _lokasiController.text,
-          'kategori': _kategoriPilihan,
-          'deskripsi': _deskripsiController.text,
-          'pelapor': _pelaporController.text,
-          'status': 'Menunggu',
-          'tanggal': FieldValue.serverTimestamp(),
-        });
-
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Laporan berhasil dikirim ke database!')),
-        );
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal mengirim: $e')),
-        );
-      }
+  Future<void> _kirimLaporan() async {
+    if (_judulController.text.isEmpty ||
+        _deskripsiController.text.isEmpty ||
+        _lokasiController.text.isEmpty ||
+        _pelaporController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lengkapi semua data dulu ya!')),
+      );
+      return;
+    }
+    setState(() => _loading = true);
+    String? fotoBase64;
+    if (_foto != null) {
+      final bytes = await _foto!.readAsBytes();
+      fotoBase64 = base64Encode(bytes);
+    }
+    await FirebaseFirestore.instance.collection('laporan').add({
+      'judul': _judulController.text,
+      'deskripsi': _deskripsiController.text,
+      'kategori': _kategori,
+      'lokasi': _lokasiController.text,
+      'pelapor': _pelaporController.text,
+      'status': 'Menunggu',
+      'tanggal': DateTime.now().toString(),
+      'foto': fotoBase64 ?? '',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    _judulController.clear();
+    _deskripsiController.clear();
+    _lokasiController.clear();
+    _pelaporController.clear();
+    setState(() {
+      _foto = null;
+      _loading = false;
+    });
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Laporan berhasil dikirim!')),
+      );
     }
   }
 
@@ -171,57 +138,142 @@ class _FormLaporanScreenState extends State<FormLaporanScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Form Laporan Kerusakan'),
-        backgroundColor: Colors.blueAccent,
+        title: const Text('AyoLaporFaskam'),
+        backgroundColor: Colors.teal,
         foregroundColor: Colors.white,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            children: [
-              TextFormField(
-                controller: _judulController,
-                decoration: const InputDecoration(labelText: 'Judul Kerusakan (Cth: AC Bocor)'),
-                validator: (value) => value!.isEmpty ? 'Wajib diisi' : null,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Buat Laporan Baru',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _judulController,
+              decoration: const InputDecoration(
+                  labelText: 'Judul', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _deskripsiController,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                  labelText: 'Deskripsi', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: _kategori,
+              items: _kategoriList
+                  .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                  .toList(),
+              onChanged: (v) => setState(() => _kategori = v!),
+              decoration: const InputDecoration(
+                  labelText: 'Kategori', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _lokasiController,
+              decoration: const InputDecoration(
+                  labelText: 'Lokasi (ex: Gedung SDS 2.1)',
+                  border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _pelaporController,
+              decoration: const InputDecoration(
+                  labelText: 'Nama + NIM (ex: Sondang Imelda 25781103)',
+                  border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 16),
+            // BAGIAN FOTO - INI YANG BARU
+            Container(
+              height: 200,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey),
+                borderRadius: BorderRadius.circular(12),
               ),
-              TextFormField(
-                controller: _lokasiController,
-                decoration: const InputDecoration(labelText: 'Lokasi (Cth: Gedung A Lt. 2)'),
-                validator: (value) => value!.isEmpty ? 'Wajib diisi' : null,
-              ),
-              DropdownButtonFormField<String>(
-                value: _kategoriPilihan,
-                items: _kategoriList.map((kategori) {
-                  return DropdownMenuItem(value: kategori, child: Text(kategori));
-                }).toList(),
-                onChanged: (val) => setState(() => _kategoriPilihan = val!),
-                decoration: const InputDecoration(labelText: 'Kategori Fasilitas'),
-              ),
-              TextFormField(
-                controller: _deskripsiController,
-                decoration: const InputDecoration(labelText: 'Deskripsi Detail'),
-                maxLines: 3,
-                validator: (value) => value!.isEmpty ? 'Wajib diisi' : null,
-              ),
-              TextFormField(
-                controller: _pelaporController,
-                decoration: const InputDecoration(labelText: 'Nama / Identitas Pelapor'),
-                validator: (value) => value!.isEmpty ? 'Wajib diisi' : null,
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blueAccent,
+              child: _foto == null
+                  ? const Center(child: Text('Belum ada foto'))
+                  : ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.file(_foto!, fit: BoxFit.cover, width: double.infinity),
+                    ),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: _pilihFoto,
+              icon: const Icon(Icons.add_a_photo),
+              label: const Text('Tambah Foto'),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange, foregroundColor: Colors.white),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: _loading ? null : _kirimLaporan,
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.teal,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                onPressed: _kirimLaporan,
-                child: const Text('Kirim Laporan Sekarang', style: TextStyle(fontSize: 16)),
-              ),
-            ],
-          ),
+                  padding: const EdgeInsets.symmetric(vertical: 16)),
+              child: _loading
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text('KIRIM LAPORAN', style: TextStyle(fontSize: 16)),
+            ),
+            const SizedBox(height: 24),
+            const Text('Daftar Laporan',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('laporan')
+                  .orderBy('createdAt', descending: true)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final docs = snapshot.data!.docs;
+                if (docs.isEmpty) {
+                  return const Text('Belum ada laporan');
+                }
+                return ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: docs.length,
+                  itemBuilder: (context, index) {
+                    final data = docs[index].data() as Map<String, dynamic>;
+                    final fotoStr = data['foto'] as String? ?? '';
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (fotoStr.isNotEmpty)
+                            ClipRRect(
+                              borderRadius: const BorderRadius.vertical(
+                                  top: Radius.circular(12)),
+                              child: Image.memory(
+                                base64Decode(fotoStr),
+                                height: 180,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          ListTile(
+                            title: Text(data['judul'] ?? ''),
+                            subtitle: Text(
+                                '${data['deskripsi'] ?? ''}\nLokasi: ${data['lokasi'] ?? ''}\nPelapor: ${data['pelapor'] ?? ''}'),
+                            trailing: Chip(label: Text(data['status'] ?? 'Menunggu')),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ],
         ),
       ),
     );
