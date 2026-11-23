@@ -1,5 +1,5 @@
-import 'dart:convert';
 import 'dart:io';
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -19,262 +19,196 @@ class AyoLaporApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'AyoLaporFaskam',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.teal,
-        useMaterial3: true,
-      ),
-      home: const LaporanPage(),
+      title: 'Ayo Lapor Faskam',
+      theme: ThemeData(primarySwatch: Colors.teal, useMaterial3: true),
+      home: const HomePage(),
     );
   }
 }
 
-class LaporanPage extends StatefulWidget {
-  const LaporanPage({super.key});
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
   @override
-  State<LaporanPage> createState() => _LaporanPageState();
+  State<HomePage> createState() => _HomePageState();
 }
 
-class _LaporanPageState extends State<LaporanPage> {
+class _HomePageState extends State<HomePage> {
+  // ===== FORM =====
   final _judulController = TextEditingController();
   final _deskripsiController = TextEditingController();
-  final _lokasiController = TextEditingController();
-  final _pelaporController = TextEditingController();
-  String _kategori = 'Fasilitas Lain';
-  File? _foto;
-  final ImagePicker _picker = ImagePicker();
-  bool _loading = false;
+  String _kategori = 'Fasilitas';
+  String? _base64Image;
+  bool _isLoading = false;
 
-  final List<String> _kategoriList = [
-    'Fasilitas Lain',
-    'AC',
-    'Listrik',
-    'Toilet',
-    'Meja Kursi',
-    'Proyektor',
-    'Kebersihan',
-  ];
-
-  Future<void> _pilihFoto() async {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Wrap(
-          children: [
-            ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: const Text('Ambil dari Kamera'),
-              onTap: () async {
-                Navigator.pop(context);
-                final XFile? foto =
-                    await _picker.pickImage(source: ImageSource.camera, imageQuality: 60);
-                if (foto != null) {
-                  setState(() => _foto = File(foto.path));
-                }
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: const Text('Pilih dari Galeri'),
-              onTap: () async {
-                Navigator.pop(context);
-                final XFile? foto =
-                    await _picker.pickImage(source: ImageSource.gallery, imageQuality: 60);
-                if (foto != null) {
-                  setState(() => _foto = File(foto.path));
-                }
-              },
-            ),
-          ],
-        ),
-      ),
-    );
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 50);
+    if (picked != null) {
+      final bytes = await File(picked.path).readAsBytes();
+      setState(() => _base64Image = base64Encode(bytes));
+    }
   }
 
   Future<void> _kirimLaporan() async {
-    if (_judulController.text.isEmpty ||
-        _deskripsiController.text.isEmpty ||
-        _lokasiController.text.isEmpty ||
-        _pelaporController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Lengkapi semua data dulu ya!')),
-      );
+    if (_judulController.text.isEmpty || _deskripsiController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Judul & Deskripsi wajib diisi')));
       return;
     }
-    setState(() => _loading = true);
-    String? fotoBase64;
-    if (_foto != null) {
-      final bytes = await _foto!.readAsBytes();
-      fotoBase64 = base64Encode(bytes);
+    setState(() => _isLoading = true);
+    try {
+      await FirebaseFirestore.instance.collection('laporan').add({
+        'judul': _judulController.text,
+        'deskripsi': _deskripsiController.text,
+        'kategori': _kategori,
+        'status': 'Menunggu',
+        'nama': 'Sondang Imelda',
+        'waktu': FieldValue.serverTimestamp(),
+        'foto': _base64Image ?? '',
+      });
+      _judulController.clear();
+      _deskripsiController.clear();
+      setState(() => _base64Image = null);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Laporan berhasil dikirim!')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal: $e')));
     }
-    await FirebaseFirestore.instance.collection('laporan').add({
-      'judul': _judulController.text,
-      'deskripsi': _deskripsiController.text,
-      'kategori': _kategori,
-      'lokasi': _lokasiController.text,
-      'pelapor': _pelaporController.text,
-      'status': 'Menunggu',
-      'tanggal': DateTime.now().toString(),
-      'foto': fotoBase64 ?? '',
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-    _judulController.clear();
-    _deskripsiController.clear();
-    _lokasiController.clear();
-    _pelaporController.clear();
-    setState(() {
-      _foto = null;
-      _loading = false;
-    });
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Laporan berhasil dikirim!')),
-      );
+    setState(() => _isLoading = false);
+  }
+
+  // ===== UBAH STATUS & HAPUS =====
+  Future<void> _ubahStatus(String docId, String statusBaru) async {
+    await FirebaseFirestore.instance.collection('laporan').doc(docId).update({'status': statusBaru});
+  }
+
+  Future<void> _hapusLaporan(String docId, String judul) async {
+    bool? yakin = await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Hapus Laporan?'),
+        content: Text('Yakin mau hapus "$judul"?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Hapus', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (yakin == true) {
+      await FirebaseFirestore.instance.collection('laporan').doc(docId).delete();
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('AyoLaporFaskam'),
-        backgroundColor: Colors.teal,
-        foregroundColor: Colors.white,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text('Buat Laporan Baru',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _judulController,
-              decoration: const InputDecoration(
-                  labelText: 'Judul', border: OutlineInputBorder()),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _deskripsiController,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                  labelText: 'Deskripsi', border: OutlineInputBorder()),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              value: _kategori,
-              items: _kategoriList
-                  .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                  .toList(),
-              onChanged: (v) => setState(() => _kategori = v!),
-              decoration: const InputDecoration(
-                  labelText: 'Kategori', border: OutlineInputBorder()),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _lokasiController,
-              decoration: const InputDecoration(
-                  labelText: 'Lokasi (ex: Gedung SDS 2.1)',
-                  border: OutlineInputBorder()),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _pelaporController,
-              decoration: const InputDecoration(
-                  labelText: 'Nama + NIM (ex: Sondang Imelda 25781103)',
-                  border: OutlineInputBorder()),
-            ),
-            const SizedBox(height: 16),
-            // BAGIAN FOTO - INI YANG BARU
-            Container(
-              height: 200,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: _foto == null
-                  ? const Center(child: Text('Belum ada foto'))
-                  : ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Image.file(_foto!, fit: BoxFit.cover, width: double.infinity),
+      appBar: AppBar(title: const Text('Ayo Lapor Faskam'), backgroundColor: Colors.teal, foregroundColor: Colors.white),
+      body: Column(
+        children: [
+          // --- FORM INPUT ---
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              children: [
+                TextField(controller: _judulController, decoration: const InputDecoration(labelText: 'Judul Laporan', border: OutlineInputBorder())),
+                const SizedBox(height: 8),
+                TextField(controller: _deskripsiController, decoration: const InputDecoration(labelText: 'Deskripsi', border: OutlineInputBorder())),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    DropdownButton<String>(
+                      value: _kategori,
+                      items: ['Fasilitas', 'Kebersihan', 'Keamanan', 'Lainnya'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                      onChanged: (v) => setState(() => _kategori = v!),
                     ),
+                    const Spacer(),
+                    TextButton.icon(onPressed: _pickImage, icon: const Icon(Icons.photo), label: Text(_base64Image == null ? 'Pilih Foto' : 'Foto Terpilih')),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _kirimLaporan,
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+                    child: Text(_isLoading ? 'Mengirim...' : 'Kirim Laporan', style: const TextStyle(color: Colors.white)),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            ElevatedButton.icon(
-              onPressed: _pilihFoto,
-              icon: const Icon(Icons.add_a_photo),
-              label: const Text('Tambah Foto'),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange, foregroundColor: Colors.white),
-            ),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: _loading ? null : _kirimLaporan,
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.teal,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16)),
-              child: _loading
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text('KIRIM LAPORAN', style: TextStyle(fontSize: 16)),
-            ),
-            const SizedBox(height: 24),
-            const Text('Daftar Laporan',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('laporan')
-                  .orderBy('createdAt', descending: true)
-                  .snapshots(),
+          ),
+          const Divider(),
+          // --- LIST LAPORAN DARI FIREBASE ---
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance.collection('laporan').orderBy('waktu', descending: true).snapshots(),
               builder: (context, snapshot) {
-                if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+                if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}'));
+                if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text('Belum ada laporan'));
+
                 final docs = snapshot.data!.docs;
-                if (docs.isEmpty) {
-                  return const Text('Belum ada laporan');
-                }
                 return ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
                   itemCount: docs.length,
                   itemBuilder: (context, index) {
-                    final data = docs[index].data() as Map<String, dynamic>;
-                    final fotoStr = data['foto'] as String? ?? '';
+                    final doc = docs[index];
+                    final item = doc.data() as Map<String, dynamic>;
+                    String status = item['status'] ?? 'Menunggu';
+                    Color statusColor = status == 'Selesai' ? Colors.green : status == 'Diproses' ? Colors.orange : Colors.grey;
+
                     return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (fotoStr.isNotEmpty)
-                            ClipRRect(
-                              borderRadius: const BorderRadius.vertical(
-                                  top: Radius.circular(12)),
-                              child: Image.memory(
-                                base64Decode(fotoStr),
-                                height: 180,
-                                width: double.infinity,
-                                fit: BoxFit.cover,
-                              ),
+                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(child: Text(item['judul'] ?? '-', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(color: statusColor, borderRadius: BorderRadius.circular(20)),
+                                  child: Text(status, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                ),
+                              ],
                             ),
-                          ListTile(
-                            title: Text(data['judul'] ?? ''),
-                            subtitle: Text(
-                                '${data['deskripsi'] ?? ''}\nLokasi: ${data['lokasi'] ?? ''}\nPelapor: ${data['pelapor'] ?? ''}'),
-                            trailing: Chip(label: Text(data['status'] ?? 'Menunggu')),
-                          ),
-                        ],
+                            const SizedBox(height: 4),
+                            Text(item['deskripsi'] ?? ''),
+                            const SizedBox(height: 4),
+                            Text('Kategori: ${item['kategori'] ?? '-'} | Oleh: ${item['nama'] ?? '-'}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                            const SizedBox(height: 10),
+                            // TOMBOL SELESAI & LAINNYA
+                            Row(
+                              children: [
+                                ElevatedButton(
+                                  onPressed: () => _ubahStatus(doc.id, 'Diproses'),
+                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                                  child: const Text('Diproses', style: TextStyle(color: Colors.white)),
+                                ),
+                                const SizedBox(width: 8),
+                                ElevatedButton(
+                                  onPressed: () => _ubahStatus(doc.id, 'Selesai'),
+                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                                  child: const Text('Selesai', style: TextStyle(color: Colors.white)),
+                                ),
+                                const Spacer(),
+                                IconButton(
+                                  onPressed: () => _hapusLaporan(doc.id, item['judul'] ?? ''),
+                                  icon: const Icon(Icons.delete, color: Colors.red),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     );
                   },
                 );
               },
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
