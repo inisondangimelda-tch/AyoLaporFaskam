@@ -1,27 +1,30 @@
 import 'dart:io';
-import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
+    options: const FirebaseOptions(
+      apiKey: "AIzaSyDUeR7o1UqUu0XoGQJvLx9PpL2r8QZx0M",
+      appId: "1:1029384756:android:abcd1234",
+      messagingSenderId: "1029384756",
+      projectId: "ayolapor-4c8a9",
+    ),
   );
-  runApp(const AyoLaporApp());
+  runApp(const MyApp());
 }
 
-class AyoLaporApp extends StatelessWidget {
-  const AyoLaporApp({super.key});
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Ayo Lapor Faskam',
-      theme: ThemeData(primarySwatch: Colors.teal, useMaterial3: true),
+      title: 'AyoLapor',
+      theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
       home: const HomePage(),
     );
   }
@@ -34,181 +37,152 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  // ===== FORM =====
-  final _judulController = TextEditingController();
-  final _deskripsiController = TextEditingController();
-  String _kategori = 'Fasilitas';
-  String? _base64Image;
-  bool _isLoading = false;
-
-  Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 50);
-    if (picked != null) {
-      final bytes = await File(picked.path).readAsBytes();
-      setState(() => _base64Image = base64Encode(bytes));
-    }
-  }
-
-  Future<void> _kirimLaporan() async {
-    if (_judulController.text.isEmpty || _deskripsiController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Judul & Deskripsi wajib diisi')));
-      return;
-    }
-    setState(() => _isLoading = true);
-    try {
-      await FirebaseFirestore.instance.collection('laporan').add({
-        'judul': _judulController.text,
-        'deskripsi': _deskripsiController.text,
-        'kategori': _kategori,
-        'status': 'Menunggu',
-        'nama': 'Sondang Imelda',
-        'waktu': FieldValue.serverTimestamp(),
-        'foto': _base64Image ?? '',
-      });
-      _judulController.clear();
-      _deskripsiController.clear();
-      setState(() => _base64Image = null);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Laporan berhasil dikirim!')));
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal: $e')));
-    }
-    setState(() => _isLoading = false);
-  }
-
-  // ===== UBAH STATUS & HAPUS =====
-  Future<void> _ubahStatus(String docId, String statusBaru) async {
-    await FirebaseFirestore.instance.collection('laporan').doc(docId).update({'status': statusBaru});
-  }
-
-  Future<void> _hapusLaporan(String docId, String judul) async {
-    bool? yakin = await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Hapus Laporan?'),
-        content: Text('Yakin mau hapus "$judul"?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Hapus', style: TextStyle(color: Colors.red))),
+  int _index = 0;
+  final _pages = const [LaporPage(), AdminPage()];
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _pages[_index],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _index,
+        onTap: (i) => setState(() => _index = i),
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.edit_document), label: 'Lapor'),
+          BottomNavigationBarItem(icon: Icon(Icons.admin_panel_settings), label: 'Admin'),
         ],
       ),
     );
-    if (yakin == true) {
-      await FirebaseFirestore.instance.collection('laporan').doc(docId).delete();
+  }
+}
+
+class LaporPage extends StatefulWidget {
+  const LaporPage({super.key});
+  @override
+  State<LaporPage> createState() => _LaporPageState();
+}
+
+class _LaporPageState extends State<LaporPage> {
+  final _nama = TextEditingController();
+  final _npm = TextEditingController();
+  final _kelas = TextEditingController();
+  final _prodi = TextEditingController();
+  final _judul = TextEditingController();
+  final _deskripsi = TextEditingController();
+  File? _foto;
+  bool _loading = false;
+
+  Future<void> _ambilFoto() async {
+    final XFile? x = await ImagePicker().pickImage(source: ImageSource.camera, imageQuality: 70);
+    if (x != null) setState(() => _foto = File(x.path));
+  }
+
+  Future<void> _kirim() async {
+    if (_nama.text.isEmpty || _npm.text.isEmpty || _kelas.text.isEmpty || _prodi.text.isEmpty || _judul.text.isEmpty || _deskripsi.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Isi semua dulu ya beb!')));
+      return;
     }
+    setState(() => _loading = true);
+    try {
+      await FirebaseFirestore.instance.collection('laporan').add({
+        'nama': _nama.text.trim(),
+        'npm': _npm.text.trim(),
+        'kelas': _kelas.text.trim(),
+        'prodi': _prodi.text.trim(),
+        'judul': _judul.text.trim(),
+        'deskripsi': _deskripsi.text.trim(),
+        'status': 'Menunggu',
+        'createdAt': FieldValue.serverTimestamp(),
+        'adaFoto': _foto != null,
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(backgroundColor: Colors.green, content: Text('BERHASIL! Laporan masuk database!')));
+      _nama.clear(); _npm.clear(); _kelas.clear(); _prodi.clear(); _judul.clear(); _deskripsi.clear();
+      setState(() => _foto = null);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: Colors.red, content: Text('GAGAL: $e')));
+    }
+    setState(() => _loading = false);
+  }
+
+  Widget _input(TextEditingController c, String label, {int maxLines = 1, TextInputType? type}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(controller: c, maxLines: maxLines, keyboardType: type, decoration: InputDecoration(labelText: label, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Ayo Lapor Faskam'), backgroundColor: Colors.teal, foregroundColor: Colors.white),
-      body: Column(
-        children: [
-          // --- FORM INPUT ---
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              children: [
-                TextField(controller: _judulController, decoration: const InputDecoration(labelText: 'Judul Laporan', border: OutlineInputBorder())),
-                const SizedBox(height: 8),
-                TextField(controller: _deskripsiController, decoration: const InputDecoration(labelText: 'Deskripsi', border: OutlineInputBorder())),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    DropdownButton<String>(
-                      value: _kategori,
-                      items: ['Fasilitas', 'Kebersihan', 'Keamanan', 'Lainnya'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                      onChanged: (v) => setState(() => _kategori = v!),
-                    ),
-                    const Spacer(),
-                    TextButton.icon(onPressed: _pickImage, icon: const Icon(Icons.photo), label: Text(_base64Image == null ? 'Pilih Foto' : 'Foto Terpilih')),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _kirimLaporan,
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
-                    child: Text(_isLoading ? 'Mengirim...' : 'Kirim Laporan', style: const TextStyle(color: Colors.white)),
+      appBar: AppBar(title: const Text('AyoLapor - Buat Laporan'), backgroundColor: Colors.blue, foregroundColor: Colors.white),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            _input(_nama, 'Nama Lengkap'),
+            _input(_npm, 'NPM', type: TextInputType.number),
+            _input(_kelas, 'Kelas'),
+            _input(_prodi, 'Prodi'),
+            _input(_judul, 'Judul Laporan'),
+            _input(_deskripsi, 'Deskripsi Laporan', maxLines: 4),
+            const SizedBox(height: 8),
+            GestureDetector(
+              onTap: _ambilFoto,
+              child: Container(
+                height: 150, width: double.infinity,
+                decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(12)),
+                child: _foto != null ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(_foto!, fit: BoxFit.cover)) : const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.camera_alt, size: 40, color: Colors.grey), Text('Tap untuk Ambil Foto (Opsional)')]),
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity, height: 50,
+              child: ElevatedButton(
+                onPressed: _loading ? null : _kirim,
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+                child: Text(_loading ? 'Mengirim...' : 'Kirim Laporan'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class AdminPage extends StatelessWidget {
+  const AdminPage({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Admin - Daftar Laporan'), backgroundColor: Colors.blue, foregroundColor: Colors.white),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance.collection('laporan').orderBy('createdAt', descending: true).snapshots(),
+        builder: (context, snap) {
+          if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
+          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+          final docs = snap.data!.docs;
+          if (docs.isEmpty) return const Center(child: Text('Belum ada laporan'));
+          return ListView.builder(
+            itemCount: docs.length,
+            itemBuilder: (context, i) {
+              final d = docs[i].data() as Map<String, dynamic>;
+              return Card(
+                margin: const EdgeInsets.all(8),
+                child: ListTile(
+                  title: Text(d['judul'] ?? '-'),
+                  subtitle: Text('${d['nama'] ?? '-'} | NPM: ${d['npm'] ?? '-'} | ${d['kelas'] ?? '-'} | ${d['prodi'] ?? '-'}\n${d['deskripsi'] ?? ''}\nStatus: ${d['status'] ?? ''}'),
+                  isThreeLine: true,
+                  trailing: PopupMenuButton<String>(
+                    onSelected: (v) => FirebaseFirestore.instance.collection('laporan').doc(docs[i].id).update({'status': v}),
+                    itemBuilder: (c) => const [PopupMenuItem(value: 'Menunggu', child: Text('Menunggu')), PopupMenuItem(value: 'Diproses', child: Text('Diproses')), PopupMenuItem(value: 'Selesai', child: Text('Selesai'))],
                   ),
                 ),
-              ],
-            ),
-          ),
-          const Divider(),
-          // --- LIST LAPORAN DARI FIREBASE ---
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('laporan').orderBy('waktu', descending: true).snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}'));
-                if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text('Belum ada laporan'));
-
-                final docs = snapshot.data!.docs;
-                return ListView.builder(
-                  itemCount: docs.length,
-                  itemBuilder: (context, index) {
-                    final doc = docs[index];
-                    final item = doc.data() as Map<String, dynamic>;
-                    String status = item['status'] ?? 'Menunggu';
-                    Color statusColor = status == 'Selesai' ? Colors.green : status == 'Diproses' ? Colors.orange : Colors.grey;
-
-                    return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(child: Text(item['judul'] ?? '-', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(color: statusColor, borderRadius: BorderRadius.circular(20)),
-                                  child: Text(status, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Text(item['deskripsi'] ?? ''),
-                            const SizedBox(height: 4),
-                            Text('Kategori: ${item['kategori'] ?? '-'} | Oleh: ${item['nama'] ?? '-'}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                            const SizedBox(height: 10),
-                            // TOMBOL SELESAI & LAINNYA
-                            Row(
-                              children: [
-                                ElevatedButton(
-                                  onPressed: () => _ubahStatus(doc.id, 'Diproses'),
-                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                                  child: const Text('Diproses', style: TextStyle(color: Colors.white)),
-                                ),
-                                const SizedBox(width: 8),
-                                ElevatedButton(
-                                  onPressed: () => _ubahStatus(doc.id, 'Selesai'),
-                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                                  child: const Text('Selesai', style: TextStyle(color: Colors.white)),
-                                ),
-                                const Spacer(),
-                                IconButton(
-                                  onPressed: () => _hapusLaporan(doc.id, item['judul'] ?? ''),
-                                  icon: const Icon(Icons.delete, color: Colors.red),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ],
+              );
+            },
+          );
+        },
       ),
     );
   }
